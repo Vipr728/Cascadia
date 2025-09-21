@@ -1,7 +1,43 @@
+"use client";
+
 import WeaknessCard from '../components/WeaknessCard';
+import PlaceCall from '../components/PlaceCall';
+import { useEffect, useState } from 'react';
 
 export default function Profile() {
-  const weaknesses = {
+  const [fetched, setFetched] = useState<any | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch('/api/analysis');
+        const data = await res.json();
+        setFetched(data?.record?.analysis || null);
+      } catch {}
+    }
+    load();
+  }, []);
+
+  const weaknesses = fetched?.weaknesses ? {
+    critical: (fetched.weaknesses as any[]).filter(w => w.severity === 'critical').map(w => ({
+      title: w.title,
+      description: w.description,
+      focus: w.focus,
+      score: 0,
+    })),
+    moderate: (fetched.weaknesses as any[]).filter(w => w.severity === 'moderate').map(w => ({
+      title: w.title,
+      description: w.description,
+      focus: w.focus,
+      score: 0,
+    })),
+    minor: (fetched.weaknesses as any[]).filter(w => w.severity === 'minor').map(w => ({
+      title: w.title,
+      description: w.description,
+      focus: w.focus,
+      score: 0,
+    })),
+  } : {
     critical: [
       {
         title: "Grammar Patterns",
@@ -172,6 +208,7 @@ export default function Profile() {
           </div>
         </div>
       </div>
+      <div className="max-w-7xl mx-auto p-6 center-content"><PlaceCall /></div>
     </div>
   );
 }
