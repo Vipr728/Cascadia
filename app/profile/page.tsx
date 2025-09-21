@@ -6,6 +6,9 @@ import { useEffect, useState } from 'react';
 
 export default function Profile() {
   const [fetched, setFetched] = useState<any | null>(null);
+  // Simulate app age of 2 days (typed as number to avoid literal narrowing)
+  const appAgeDays = 2 as number;
+  const streakDays = appAgeDays as number;
 
   useEffect(() => {
     async function load() {
@@ -108,19 +111,22 @@ export default function Profile() {
                   {Array.from({ length: 26 }, (_, week) => (
                     <div key={week} className="flex flex-col gap-0.5">
                       {Array.from({ length: 7 }, (_, day) => {
-                        const intensity = Math.random();
-                        const getColor = (intensity: number) => {
-                          if (intensity < 0.2) return 'bg-[#161b22]';
-                          if (intensity < 0.4) return 'bg-[#0e4429]';
-                          if (intensity < 0.6) return 'bg-[#006d32]';
-                          if (intensity < 0.8) return 'bg-[#26a641]';
+                        // Compute from the start of the grid (top-left)
+                        const cellsFromStart = week * 7 + day;
+                        const active = cellsFromStart < appAgeDays;
+                        const intensity = active ? 0.9 - (cellsFromStart * 0.2) : 0;
+                        const getColor = (n: number) => {
+                          if (n <= 0) return 'bg-[#161b22]';
+                          if (n < 0.4) return 'bg-[#0e4429]';
+                          if (n < 0.6) return 'bg-[#006d32]';
+                          if (n < 0.8) return 'bg-[#26a641]';
                           return 'bg-[#39d353]';
                         };
                         return (
                           <div
                             key={day}
                             className={`w-2 h-2 rounded-sm ${getColor(intensity)}`}
-                            title={`${week} weeks ago, day ${day + 1}`}
+                            title={`day ${cellsFromStart + 1}`}
                           />
                         );
                       })}
@@ -133,7 +139,7 @@ export default function Profile() {
             <div className="flex items-center gap-4">
               <span className="text-[#00b8a3] text-sm">✓</span>
               <div className="text-right">
-                <div className="text-[#00b8a3] text-sm font-medium">47 day streak</div>
+                <div className="text-[#00b8a3] text-sm font-medium">{streakDays} day{streakDays !== 1 ? 's' : ''} streak</div>
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-2 h-2 bg-[#00b8a3] rounded-full" title="Call with AI"></div>

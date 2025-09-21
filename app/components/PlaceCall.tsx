@@ -94,14 +94,17 @@ export default function PlaceCall() {
         <div className="text-[#ff6b6b] text-xs mt-1">{error}</div>
       )}
       {scheduledFor && !editing && (
-        <div className="text-xs mt-2 flex items-center justify-center gap-2">
-          <div className="inline-flex items-center gap-2 rounded-full bg-[#101010] border border-[#303030] px-3 py-1 text-[#d1d5db]">
+        <div className="text-xs mt-3 flex flex-wrap items-center justify-center gap-2 sm:gap-3">
+          <div className="inline-flex items-center gap-2 rounded-full bg-[#101010] border border-[#303030] px-3 py-1 text-[#d1d5db] whitespace-nowrap">
             <span className="w-1.5 h-1.5 rounded-full bg-[#00b8a3]"></span>
             <span>Daily at {whenTime || `${scheduledFor.getHours().toString().padStart(2,'0')}:${scheduledFor.getMinutes().toString().padStart(2,'0')}`}</span>
           </div>
-          <span className="text-[#9aa0a6] text-[11px]">Next: {scheduledFor.toLocaleString()}</span>
+          <div className="inline-flex items-center gap-2 rounded-full bg-[#101010] border border-[#303030] px-3 py-1 text-[#cbd5e1] whitespace-nowrap">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#9aa0a6]"></span>
+            <span>Next {scheduledFor.toLocaleString()}</span>
+          </div>
           <button
-            className="text-[#9aa0a6] text-[11px] underline decoration-dotted decoration-[#404040] hover:text-[#cbd5e1]"
+            className="inline-flex items-center rounded-full border border-[#303030] bg-[#111111] text-[#cbd5e1] text-[11px] px-3 py-1 hover:bg-[#151515]"
             onClick={() => {
               const dt = scheduledFor as Date;
               const pad = (n: number) => String(n).padStart(2, '0');
@@ -109,6 +112,8 @@ export default function PlaceCall() {
               setWhenTime(val);
               setEditing(true);
             }}
+            aria-label="Change scheduled time"
+            title="Change scheduled time"
           >
             Change
           </button>

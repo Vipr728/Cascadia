@@ -31,7 +31,6 @@ export default function RootLayout({
         <div className="pb-16">
           {children}
         </div>
-        <BottomNav />
       </body>
     </html>
   );
