@@ -102,7 +102,7 @@ export default function Profile() {
       {/* Header with Workflow Steps */}
       <div className="bg-[#1e1e1e] border-b border-[#404040] px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Learning Profile</h1>
+        <h1 className="text-2xl font-bold text-white">Chatty</h1>
           {/* Heatmap - Left aligned, centered horizontally */}
           <div className="flex justify-center">
             <div className="max-w-7xl w-full px-6 py-3">

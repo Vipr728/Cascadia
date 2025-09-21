@@ -56,6 +56,15 @@ export async function POST(request: NextRequest) {
       // Make outgoing call using ConversationRelay
       const body = await request.json().catch(() => ({}));
       const targetNumber = body.to || '+14253128646';
+      const requestedLang: string = body.language || 'en-US';
+
+      const langMap: Record<string, { ttsVoice: string; welcome: string; transcriptionLanguage: string; ttsLanguage: string }>= {
+        'en-US': { ttsVoice: 'Polly.Joanna', welcome: "Hi! I'm your AI assistant. What can I help you with today?", transcriptionLanguage: 'en-US', ttsLanguage: 'en-US' },
+        'es-MX': { ttsVoice: 'Mia-Neural', welcome: '¡Hola! Soy tu asistente de IA. ¿En qué puedo ayudarte?', transcriptionLanguage: 'es-MX', ttsLanguage: 'es-MX' },
+        'ru-RU': { ttsVoice: 'Tatyana-Neural', welcome: 'Привет! Я ваш голосовой ассистент. Чем могу помочь?', transcriptionLanguage: 'ru-RU', ttsLanguage: 'ru-RU' },
+        'fr-FR': { ttsVoice: 'Lea', welcome: "Bonjour ! Je suis votre assistant IA. Comment puis-je vous aider ?", transcriptionLanguage: 'fr-FR', ttsLanguage: 'fr-FR' },
+      };
+      const langCfg = langMap[requestedLang] || langMap['en-US'];
       
       console.log('📞 Making call to:', targetNumber);
 
@@ -97,7 +106,7 @@ export async function POST(request: NextRequest) {
         twiml: `<?xml version="1.0" encoding="UTF-8"?>
           <Response>
             <Connect>
-              <ConversationRelay url="${wsUrl}" welcomeGreeting="Hi! I'm your AI assistant powered by OpenAI. What can I help you with today?" />
+              <ConversationRelay url="${wsUrl}" welcomeGreeting="${langCfg.welcome}" transcriptionLanguage="${langCfg.transcriptionLanguage}" transcriptionProvider="google" ttsLanguage="${langCfg.ttsLanguage}" ttsProvider="amazon" voice="${langCfg.ttsVoice}" />
             </Connect>
           </Response>`
       });

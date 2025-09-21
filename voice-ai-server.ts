@@ -18,6 +18,8 @@ app.use(express.json());
 const HTTP_PORT = process.env.HTTP_PORT || 3000;
 const WS_PORT = parseInt(process.env.WS_PORT || '8080', 10);
 const sessions = new Map<string, { role: string; content: string; }[]>();
+// Per-call language and voice settings (defaults align with initial TwiML)
+const sessionSettings = new Map<string, { languageCode: string; languageName: string; ttsVoice: string }>();
 const SYSTEM_PROMPT = "Eres un asistente útil. Esta conversación se está traduciendo a voz, así que responde con cuidado. Cuando respondas, por favor deletrea todos los números, por ejemplo, 'veinte' no '20'. No incluyas emojis en tus respuestas. No incluyas viñetas, asteriscos o símbolos especiales.";
 
 // --- Core Functions ---
@@ -26,14 +28,15 @@ const SYSTEM_PROMPT = "Eres un asistente útil. Esta conversación se está trad
  * @param conversation - The array of messages in the conversation.
  * @returns The AI's response text.
  */
-async function getAIResponse(conversation: { role: string; content: string; }[]): Promise<string> {
+async function getAIResponse(conversation: { role: string; content: string; }[], languageName?: string): Promise<string> {
     try {
         const conversationText = conversation
             .map(m => `${m.role === 'user' ? 'Human' : 'Assistant'}: ${m.content}`)
             .join('\n');
         
         const lastUserMessage = conversation[conversation.length - 1]?.content || "";
-        const prompt = `${SYSTEM_PROMPT}\n\nConversation:\n${conversationText}\n\nRespond to: ${lastUserMessage}`;
+        const langDirective = languageName ? `\n\nLanguage: Please respond in ${languageName}.` : '';
+        const prompt = `${SYSTEM_PROMPT}${langDirective}\n\nConversation:\n${conversationText}\n\nRespond to: ${lastUserMessage}`;
         
         const result = await model.generateContent(prompt);
         return result.response.text();
@@ -42,6 +45,29 @@ async function getAIResponse(conversation: { role: string; content: string; }[])
         return "Lo siento, estoy teniendo problemas en este momento. Por favor, inténtalo de nuevo.";
     }
 }
+// --- Language utilities ---
+function detectLanguageRequest(text: string): { languageCode: string; languageName: string; ttsVoice: string } | null {
+    const lower = text.toLowerCase();
+    // Explicit requests
+    if (/(speak|talk|answer|respond) in russian|по-русски|говори по русски|на русском/.test(lower)) {
+        return { languageCode: 'ru-RU', languageName: 'Russian', ttsVoice: 'Tatyana-Neural' };
+    }
+    if (/(speak|talk|answer|respond) in spanish|en español|en espanol|habla español/.test(lower)) {
+        return { languageCode: 'es-MX', languageName: 'Spanish', ttsVoice: 'Mia-Neural' };
+    }
+    if (/(speak|talk|answer|respond) in english|in american|in us english/.test(lower)) {
+        return { languageCode: 'en-US', languageName: 'English', ttsVoice: 'Joanna' };
+    }
+    if (/(parle|parla|speak).*français|en français/.test(lower)) {
+        return { languageCode: 'fr-FR', languageName: 'French', ttsVoice: 'Lea' };
+    }
+    // Heuristic: Cyrillic → Russian
+    if (/[\u0400-\u04FF]/.test(text)) {
+        return { languageCode: 'ru-RU', languageName: 'Russian', ttsVoice: 'Tatyana-Neural' };
+    }
+    return null;
+}
+
 
 // --- HTTP Routes ---
 app.get('/health', (req: Request, res: Response) => {
@@ -93,6 +119,8 @@ wss.on('connection', (ws: WebSocket) => {
                     callSid = message.callSid;
                     if (callSid) {
                         sessions.set(callSid, []);
+                        // initialize default language settings for the session (Spanish default from TwiML)
+                        sessionSettings.set(callSid, { languageCode: 'es-MX', languageName: 'Spanish', ttsVoice: 'Mia-Neural' });
                         console.log('🔧 Setup call:', callSid);
                     }
                     break;
@@ -106,7 +134,16 @@ wss.on('connection', (ws: WebSocket) => {
                     console.log('🎤 User said:', userMessage);
                     conversation.push({ role: "user", content: userMessage });
                     
-                    const responseText = await getAIResponse(conversation);
+                    // Detect language switch intent
+                    const detected = detectLanguageRequest(userMessage);
+                    if (detected && callSid) {
+                        sessionSettings.set(callSid, detected);
+                        ws.send(JSON.stringify({ type: 'control', control: 'set-language', language: detected.languageCode, voice: detected.ttsVoice }));
+                        console.log('🌐 Language switched to', detected.languageName, detected.languageCode, detected.ttsVoice);
+                    }
+
+                    const langPref = callSid ? sessionSettings.get(callSid)?.languageName : undefined;
+                    const responseText = await getAIResponse(conversation, langPref);
                     conversation.push({ role: "assistant", content: responseText });
                     
                     ws.send(JSON.stringify({ type: "text", token: responseText, last: true }));

@@ -12,6 +12,26 @@ export default function PlaceCall() {
   const [scheduledFor, setScheduledFor] = useState<Date | null>(null);
   const [timerId, setTimerId] = useState<number | null>(null);
   const [editing, setEditing] = useState<boolean>(false);
+  const [language, setLanguage] = useState<string>('en-US');
+
+  function pad(n: number): string { return String(n).padStart(2, '0'); }
+  function formatNextLabel(dt: Date): string {
+    const now = new Date();
+    const diffMs = dt.getTime() - now.getTime();
+    if (diffMs <= 0) return 'Now';
+    const minutes = Math.round(diffMs / 60000);
+    if (minutes < 60) return `In ${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    const sameDay = dt.toDateString() === now.toDateString();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(now.getDate() + 1);
+    const isTomorrow = dt.toDateString() === tomorrow.toDateString();
+    const hh = pad(dt.getHours());
+    const mm = pad(dt.getMinutes());
+    if (hours < 24 && sameDay) return `In ${hours}h ${mins}m`;
+    return isTomorrow ? `Tomorrow ${hh}:${mm}` : `${dt.toLocaleDateString()} ${hh}:${mm}`;
+  }
 
   async function placeCall() {
     setLoading(true);
@@ -21,7 +41,7 @@ export default function PlaceCall() {
       const res = await fetch('/api/voice?action=call', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to }),
+        body: JSON.stringify({ to, language }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -54,6 +74,19 @@ export default function PlaceCall() {
             value={whenTime}
             onChange={(e) => setWhenTime(e.target.value)}
           />
+        )}
+        {(!scheduledFor || editing) && (
+          <select
+            className="rounded-full bg-[#141414] border border-[#303030] px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#00b8a3]/60"
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            aria-label="Select call language"
+          >
+            <option value="en-US">English (US)</option>
+            <option value="es-MX">Spanish (MX)</option>
+            <option value="ru-RU">Russian</option>
+            <option value="fr-FR">French</option>
+          </select>
         )}
         <button
           onClick={() => {
@@ -94,20 +127,19 @@ export default function PlaceCall() {
         <div className="text-[#ff6b6b] text-xs mt-1">{error}</div>
       )}
       {scheduledFor && !editing && (
-        <div className="text-xs mt-3 flex flex-wrap items-center justify-center gap-2 sm:gap-3">
+        <div className="text-xs mt-3 flex flex-wrap items-center justify-center gap-y-2 gap-x-6 sm:gap-x-6">
           <div className="inline-flex items-center gap-2 rounded-full bg-[#101010] border border-[#303030] px-3 py-1 text-[#d1d5db] whitespace-nowrap">
             <span className="w-1.5 h-1.5 rounded-full bg-[#00b8a3]"></span>
             <span>Daily at {whenTime || `${scheduledFor.getHours().toString().padStart(2,'0')}:${scheduledFor.getMinutes().toString().padStart(2,'0')}`}</span>
           </div>
           <div className="inline-flex items-center gap-2 rounded-full bg-[#101010] border border-[#303030] px-3 py-1 text-[#cbd5e1] whitespace-nowrap">
             <span className="w-1.5 h-1.5 rounded-full bg-[#9aa0a6]"></span>
-            <span>Next {scheduledFor.toLocaleString()}</span>
+            <span>Next {formatNextLabel(scheduledFor)}</span>
           </div>
           <button
             className="inline-flex items-center rounded-full border border-[#303030] bg-[#111111] text-[#cbd5e1] text-[11px] px-3 py-1 hover:bg-[#151515]"
             onClick={() => {
               const dt = scheduledFor as Date;
-              const pad = (n: number) => String(n).padStart(2, '0');
               const val = `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
               setWhenTime(val);
               setEditing(true);
