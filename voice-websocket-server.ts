@@ -1,6 +1,9 @@
 import { WebSocket, WebSocketServer } from 'ws';
+import type { RequestInit } from 'undici';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
 
 // Load environment variables properly
 dotenv.config();
@@ -13,22 +16,54 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 console.log('✅ Gemini model initialized: gemini-1.5-flash');
 
-const PORT = Number(process.env.WS_PORT) || 8080;
+const PORT = Number(process.env.WS_PORT || process.env.PORT || 8080);
 const SYSTEM_PROMPT = "You are a helpful assistant. This conversation is being translated to voice, so answer carefully. When you respond, please spell out all numbers, for example twenty not 20. Do not include emojis in your responses. Do not include bullet points, asterisks, or special symbols.";
 
-// Store conversation sessions
-const sessions = new Map();
+// Store conversation sessions and per-call analysis
+type ConversationMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+const sessions: Map<string, ConversationMessage[]> = new Map();
+const analyses: Map<string, any> = new Map();
 
-// WebSocket AI response function
+function buildTranscript(messages: ConversationMessage[]): string {
+  const lines: string[] = [];
+  for (const msg of messages) {
+    if (msg.role === 'system') continue;
+    const label = msg.role === 'user' ? 'Human' : 'Assistant';
+    lines.push(`${label}: ${msg.content}`);
+  }
+  return lines.join('\n');
+}
+
+async function postAnalysis(transcript: string, language?: string): Promise<any> {
+  const url = process.env.ANALYSIS_API_URL || 'http://localhost:3000/api/analysis';
+  try {
+    const init: RequestInit = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transcript, language }),
+    };
+    const res = await fetch(url, init as any);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.error || `HTTP ${res.status}`);
+    }
+    return data?.analysis ?? data;
+  } catch (err) {
+    console.error('💥 Analysis call failed:', err);
+    return null;
+  }
+}
+
+// WebSocket AI response function (Gemini Flash)
 async function aiResponse(messages: any[]) {
   console.log('🤖 Starting AI response generation...');
   console.log('📝 Messages to process:', messages.length);
-  
+
   try {
-    // Convert messages to Gemini format
+    // Build prompt from conversation history
     let conversationText = "";
     let systemPrompt = "";
-    
+
     for (const message of messages) {
       if (message.role === "system") {
         systemPrompt = message.content;
@@ -38,25 +73,21 @@ async function aiResponse(messages: any[]) {
         conversationText += `Assistant: ${message.content}\n`;
       }
     }
-    
-    // Get the last user message
-    const lastUserMessage = messages.filter(m => m.role === "user").pop();
+
+    const lastUserMessage = messages.filter((m: any) => m.role === "user").pop();
     const prompt = `${systemPrompt}\n\nConversation history:\n${conversationText}\n\nPlease respond to: ${lastUserMessage?.content || ""}`;
-    
+
     console.log('📤 Sending prompt to Gemini...');
     console.log('🔤 Prompt length:', prompt.length, 'characters');
-    
+
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const responseText = response.text();
-    
+
     console.log('✅ Gemini response received:', responseText);
     return responseText;
   } catch (error) {
     console.error("💥 Error calling Gemini API:", error);
-    console.error("🔍 Error details:");
-    console.error("  - Type:", typeof error);
-    console.error("  - Message:", error instanceof Error ? error.message : 'Unknown');
     console.error("  - API Key exists:", !!process.env.GEMINI_API_KEY);
     console.error("  - API Key length:", process.env.GEMINI_API_KEY?.length || 0);
     return "I'm sorry, I'm having trouble processing your request right now. Please try again.";
@@ -140,6 +171,41 @@ wss.on('connection', (ws: WebSocket) => {
     console.log('📞 WebSocket connection closed');
     const callSid = (ws as any).callSid;
     if (callSid) {
+      const messages = sessions.get(callSid) || [];
+      const transcript = buildTranscript(messages);
+      (async () => {
+        console.log('🧪 Sending final transcript for analysis...');
+        const analysis = await postAnalysis(transcript);
+        if (analysis) {
+          analyses.set(callSid, analysis);
+          const weaknesses = Array.isArray(analysis?.weaknesses) ? analysis.weaknesses : [];
+          const counts = weaknesses.reduce((acc: Record<string, number>, w: any) => {
+            const k = (w?.severity || 'unknown').toString().toLowerCase();
+            acc[k] = (acc[k] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>);
+          console.log('✅ Analysis complete. Weaknesses:', weaknesses.length, counts);
+
+      // Persist to disk for retrieval by Next.js API
+      try {
+        const baseDir = path.join(process.cwd(), 'data', 'analyses');
+        fs.mkdirSync(baseDir, { recursive: true });
+        const record = {
+          callSid,
+          createdAt: new Date().toISOString(),
+          transcript,
+          analysis,
+        };
+        fs.writeFileSync(path.join(baseDir, `${callSid}.json`), JSON.stringify(record, null, 2), 'utf8');
+        fs.writeFileSync(path.join(baseDir, `latest.json`), JSON.stringify({ callSid, createdAt: record.createdAt }, null, 2), 'utf8');
+      } catch (err) {
+        console.error('💾 Failed to persist analysis to disk:', err);
+      }
+        } else {
+          console.log('⚠️ Analysis returned no result');
+        }
+      })();
+
       sessions.delete(callSid);
       console.log('🗑️ Cleaned up session for call:', callSid);
     }

@@ -1,5 +1,5 @@
 import { WebSocket, WebSocketServer } from 'ws';
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import OpenAI from 'openai';
 import express from 'express';
 import dotenv from 'dotenv';
 const twilio = require('twilio');
@@ -8,14 +8,14 @@ const twilio = require('twilio');
 dotenv.config();
 dotenv.config({ path: '.env.local' });
 
-// Initialize services
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+// Initialize services (OpenAI)
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openaiModel = process.env.OPENAI_MODEL || process.env.AG2_MODEL || process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o-mini';
 const app = express();
 app.use(express.json());
 
 const HTTP_PORT = 3000;
-const WS_PORT = 8080;
+const WS_PORT = Number(process.env.WS_PORT || process.env.PORT || 8080);
 const sessions = new Map();
 const SYSTEM_PROMPT = "You are a helpful assistant. This conversation is being translated to voice, so answer carefully. When you respond, please spell out all numbers, for example twenty not 20. Do not include emojis in your responses. Do not include bullet points, asterisks, or special symbols.";
 
@@ -31,8 +31,15 @@ async function aiResponse(messages: any[]) {
     const lastUserMessage = messages.filter(m => m.role === "user").pop();
     const prompt = `${SYSTEM_PROMPT}\n\nConversation:\n${conversationText}\n\nRespond to: ${lastUserMessage?.content || ""}`;
     
-    const result = await model.generateContent(prompt);
-    return (await result.response).text();
+    const completion = await openai.chat.completions.create({
+      model: openaiModel,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        ...messages.filter((m) => m.role !== 'system').map((m) => ({ role: m.role, content: m.content })),
+      ],
+      temperature: 0.7,
+    });
+    return completion.choices?.[0]?.message?.content || '';
   } catch (error) {
     console.error("AI Error:", error);
     return "I'm sorry, I'm having trouble right now. Please try again.";
